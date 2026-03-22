@@ -169,7 +169,6 @@ def build_agents():
     )
     
     # === AGENT 4: TRAVEL COORDINATOR (MAIN INTERFACE) ===
-    # Create handoff tools for coordination with unique names
     handoff_to_destination = HandoffTool(
         destination_expert,
         name="DestinationResearch",
@@ -230,8 +229,7 @@ async def run_agent_pipeline(query: str) -> AsyncGenerator[str, None]:
             "timestamp": time.time(),
         }
         return f"data: {json.dumps(payload)}\n\n"
-
-    # ── Attempt real pipeline ──────────────────────────────────────────────────
+        
     try:
         coordinator = build_agents()
         result = await coordinator.run(query)
