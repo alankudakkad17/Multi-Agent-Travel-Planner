@@ -8,19 +8,19 @@ import json
 import time
 from typing import AsyncGenerator
 
-# ── Uncomment these when beeai_framework is installed ──────────────────────────
-# from beeai_framework.agents.experimental import RequirementAgent
-# from beeai_framework.agents.experimental.requirements.conditional import ConditionalRequirement
-# from beeai_framework.agents.experimental.requirements.ask_permission import AskPermissionRequirement
-# from beeai_framework.memory import UnconstrainedMemory
-# from beeai_framework.backend import ChatModel, ChatModelParameters
-# from beeai_framework.tools.search.wikipedia import WikipediaTool
-# from beeai_framework.tools.weather import OpenMeteoTool
-# from beeai_framework.tools.think import ThinkTool
-# from beeai_framework.tools.handoff import HandoffTool
-# from beeai_framework.middleware.trajectory import GlobalTrajectoryMiddleware
-# from beeai_framework.tools import Tool
-# ──────────────────────────────────────────────────────────────────────────────
+
+from beeai_framework.agents.experimental import RequirementAgent
+from beeai_framework.agents.experimental.requirements.conditional import ConditionalRequirement
+from beeai_framework.agents.experimental.requirements.ask_permission import AskPermissionRequirement
+from beeai_framework.memory import UnconstrainedMemory
+from beeai_framework.backend import ChatModel, ChatModelParameters
+from beeai_framework.tools.search.wikipedia import WikipediaTool
+from beeai_framework.tools.weather import OpenMeteoTool
+from beeai_framework.tools.think import ThinkTool
+from beeai_framework.tools.handoff import HandoffTool
+from beeai_framework.middleware.trajectory import GlobalTrajectoryMiddleware
+from beeai_framework.tools import Tool
+
 
 app = FastAPI(
     title="Travel Planner Multi-Agent API",
@@ -37,7 +37,6 @@ app.add_middleware(
 )
 
 
-# ── Request / Response Models ──────────────────────────────────────────────────
 
 class TravelQuery(BaseModel):
     query: str
@@ -58,28 +57,170 @@ class AgentEvent(BaseModel):
 
 def build_agents():
     """
-    Build and return the multi-agent pipeline.
-    Replace the stub below with actual BeeAI agent construction once the
-    framework is installed.
+    Advanced Multi-Agent Travel Planning System with Language Expert
+    
+    This system demonstrates:
+    1. Specialized agent roles and coordination
+    2. Tool-based inter-agent communication
+    3. Requirements-based execution control
+    4. Language and cultural expertise integration
+    5. Comprehensive travel planning workflow
     """
-    # llm = ChatModel.from_name(
-    #     "watsonx:meta-llama/llama-4-maverick-17b-128e-instruct-fp8",
-    #     ChatModelParameters(temperature=0)
-    # )
-    # … (same construction as t12.py) …
-    # return travel_coordinator
-    raise NotImplementedError("BeeAI framework not installed – using mock pipeline")
+    
+    # Initialize the language model
+    llm = ChatModel.from_name(
+        "watsonx:meta-llama/llama-4-maverick-17b-128e-instruct-fp8", 
+        ChatModelParameters(temperature=0)
+    )
+    
+    # === AGENT 1: DESTINATION RESEARCH EXPERT ===
+    destination_expert = RequirementAgent(
+        llm=llm,
+        tools=[WikipediaTool(), ThinkTool()],
+        memory=UnconstrainedMemory(),
+        instructions="""You are a Destination Research Expert specializing in comprehensive travel destination analysis.
+
+        Your expertise:
+        - Landmarks and tourist activities
+        - Best times to visit and seasonal considerations
+        - Transportation options and accessibility
+        - Safety considerations and travel advisories
+
+        Always provide detailed, factual information with clear source attribution.""",
+        middlewares=[GlobalTrajectoryMiddleware(included=[Tool])],
+        requirements=[
+            ConditionalRequirement(
+                ThinkTool,
+                force_at_step=1,
+                min_invocations=1,
+                max_invocations=5,
+                consecutive_allowed=False
+            ),
+            ConditionalRequirement(
+                WikipediaTool,
+                only_after=[ThinkTool],
+                min_invocations=1,
+                max_invocations=4,
+                consecutive_allowed=False
+            ),
+        ]
+    )
+    
+    # === AGENT 2: TRAVEL METEOROLOGIST ===
+    travel_meteorologist = RequirementAgent(
+        llm=llm,
+        tools=[OpenMeteoTool(), ThinkTool()],
+        memory=UnconstrainedMemory(),
+        instructions="""You are a Travel Meteorologist specializing in weather analysis for travel planning.
+
+        Your expertise:
+        - Climate patterns and seasonal weather analysis
+        - Travel-specific weather recommendations
+        - Packing suggestions based on weather forecasts
+        - Activity planning based on weather conditions
+        - Regional climate variations and microclimates
+        - Weather-related travel risks and precautions
+
+        Focus on actionable weather guidance for travelers.""",
+        middlewares=[GlobalTrajectoryMiddleware(included=[Tool])],
+        requirements=[
+            ConditionalRequirement(
+                ThinkTool,
+                force_at_step=1,
+                min_invocations=1,
+                max_invocations=2
+            ),
+            ConditionalRequirement(
+                OpenMeteoTool,
+                only_after=[ThinkTool],
+                min_invocations=1,
+                max_invocations=1
+            )
+        ]
+    )
+    
+    # === AGENT 3: LANGUAGE & CULTURAL EXPERT ===
+    language_and_culture_expert = RequirementAgent(
+        llm=llm,
+        tools=[WikipediaTool(), ThinkTool()],
+        memory=UnconstrainedMemory(),
+        instructions="""You are a Language & Cultural Expert specializing in linguistic and cultural guidance for travelers.
+
+        Your expertise:
+        - Local languages and dialects spoken in destinations
+        - Essential phrases and communication tips for travelers
+        - Cultural etiquette, customs, and social norms
+        - Religious and cultural sensitivities to be aware of
+        - Local communication styles and business etiquette
+        - Cultural festivals, events, and local celebrations
+        - Dining customs, tipping practices, and social interactions
+
+        Always emphasize cultural sensitivity and respectful travel practices.""",
+        middlewares=[GlobalTrajectoryMiddleware(included=[Tool])],
+        requirements=[
+            ConditionalRequirement(
+                ThinkTool,
+                force_at_step=1,
+                min_invocations=1,
+                max_invocations=3,
+                consecutive_allowed=False
+            ),
+        ]
+    )
+    
+    # === AGENT 4: TRAVEL COORDINATOR (MAIN INTERFACE) ===
+    # Create handoff tools for coordination with unique names
+    handoff_to_destination = HandoffTool(
+        destination_expert,
+        name="DestinationResearch",
+        description="Consult our Destination Research Expert for comprehensive information about travel destinations, attractions, and practical travel guidance."
+    )
+    handoff_to_weather = HandoffTool(
+        travel_meteorologist,
+        name="WeatherPlanning", 
+        description="Consult our Travel Meteorologist for weather forecasts, climate analysis, and weather-appropriate travel recommendations."
+    )
+    handoff_to_language = HandoffTool(
+        language_and_culture_expert,
+        name="LanguageCulturalGuidance",
+        description="Consult our Language & Cultural Expert for essential phrases, cultural etiquette, and communication guidance for respectful travel."
+    )
+    
+    travel_coordinator = RequirementAgent(
+        llm=llm,
+        tools=[handoff_to_destination, handoff_to_weather, handoff_to_language, ThinkTool()],
+        memory=UnconstrainedMemory(),
+        instructions="""You are the Travel Coordinator, the main interface for comprehensive travel planning.
+
+        Your role:
+        - Understand traveler requirements and preferences
+        - Coordinate with specialized expert agents as needed
+        - Synthesize information from multiple sources
+        - Create comprehensive, actionable travel recommendations
+        - Ensure all aspects of travel planning are covered
+
+        Available Expert Agents:
+        - Destination Expert: Practical destination information
+        - Travel Meteorologist: Weather analysis and climate recommendations  
+        - Language Expert: Language tips, cultural etiquette, and communication guidance
+
+        Coordination Process:
+        1. Think about what information is needed for comprehensive travel planning
+        2. Delegate specific queries to appropriate expert agents using handoff tools
+        3. Gather insights from multiple specialists
+        4. Synthesize information into cohesive travel recommendations
+        5. Provide a complete travel planning summary
+
+        Always ensure travelers receive well-rounded guidance covering destinations and landmarks, weather, and cultural considerations.""",
+        middlewares=[GlobalTrajectoryMiddleware(included=[Tool])],
+        requirements=[
+            ConditionalRequirement(ThinkTool, consecutive_allowed=False),
+            AskPermissionRequirement(["DestinationResearch", "WeatherPlanning", "LanguageCulturalGuidance"])
+        ]
+    )
 
 
 async def run_agent_pipeline(query: str) -> AsyncGenerator[str, None]:
-    """
-    Runs the multi-agent travel-planning pipeline and streams Server-Sent Events
-    back to the client.
-
-    In production: replace the mock sequence with actual agent invocations and
-    forward real trajectory events from GlobalTrajectoryMiddleware.
-    """
-
     def sse(event: str, agent: str, message: str, data: dict = {}) -> str:
         payload = {
             "event": event,
@@ -97,66 +238,10 @@ async def run_agent_pipeline(query: str) -> AsyncGenerator[str, None]:
         yield sse("final_result", "Travel Coordinator", result.answer.text)
         return
     except NotImplementedError:
-        pass  # fall through to mock
+        pass  
     except Exception as exc:
         yield sse("error", "System", str(exc))
         return
-
-    # ── Mock pipeline (illustrative) ──────────────────────────────────────────
-    mock_steps = [
-        ("agent_start",    "Travel Coordinator",  "Analyzing your travel request…",              {}),
-        ("agent_thinking", "Travel Coordinator",  "Identifying required specialist consultations…", {}),
-        ("tool_call",      "Travel Coordinator",  "Delegating to Destination Research Expert",   {"tool": "DestinationResearch"}),
-        ("agent_start",    "Destination Expert",  "Researching Tokyo & Osaka…",                  {}),
-        ("tool_call",      "Destination Expert",  "Searching Wikipedia for Tokyo attractions",   {"tool": "WikipediaTool", "query": "Tokyo tourist attractions"}),
-        ("tool_call",      "Destination Expert",  "Searching Wikipedia for Osaka culture",       {"tool": "WikipediaTool", "query": "Osaka cultural sites"}),
-        ("agent_done",     "Destination Expert",  "Destination research complete",               {"highlights": ["Senso-ji Temple", "Fushimi Inari Shrine", "Dotonbori", "teamLab Borderless"]}),
-        ("tool_call",      "Travel Coordinator",  "Delegating to Travel Meteorologist",          {"tool": "WeatherPlanning"}),
-        ("agent_start",    "Travel Meteorologist","Fetching climate data for Japan…",            {}),
-        ("tool_call",      "Travel Meteorologist","Querying OpenMeteo for Tokyo weather",        {"tool": "OpenMeteoTool", "location": "Tokyo"}),
-        ("tool_call",      "Travel Meteorologist","Querying OpenMeteo for Osaka weather",        {"tool": "OpenMeteoTool", "location": "Osaka"}),
-        ("agent_done",     "Travel Meteorologist","Weather analysis complete",                   {"summary": "Mild temperatures 15-22°C, low rain probability. Light layers recommended."}),
-        ("tool_call",      "Travel Coordinator",  "Delegating to Language & Cultural Expert",   {"tool": "LanguageCulturalGuidance"}),
-        ("agent_start",    "Language Expert",     "Compiling cultural & language guidance…",    {}),
-        ("tool_call",      "Language Expert",     "Researching Japanese etiquette",             {"tool": "WikipediaTool", "query": "Japanese customs etiquette tourists"}),
-        ("agent_done",     "Language Expert",     "Cultural guidance ready",                    {"phrases": ["Sumimasen (Excuse me)", "Arigatou gozaimasu (Thank you)", "Eigo ga hanasemasu ka? (Do you speak English?)"]}),
-        ("agent_thinking", "Travel Coordinator",  "Synthesizing insights from all specialists…", {}),
-        ("final_result",   "Travel Coordinator",
-         """🗾 **Your 2-Week Japan Cultural Immersion Plan**
-
-**DESTINATIONS**
-Tokyo (Days 1–9) and Osaka (Days 10–14) offer a perfect contrast of modern metropolis and historic heart of Japan.
-
-**TOP EXPERIENCES**
-• Senso-ji Temple (Asakusa) – Tokyo's oldest Buddhist temple; arrive at dawn
-• teamLab Borderless – Immersive digital art in Odaiba
-• Fushimi Inari Shrine – 10,000 vermillion torii gates; hike early morning
-• Dotonbori – Osaka's neon-lit foodie paradise
-• Osaka Castle – Feudal history with panoramic city views
-• Nishiki Market – "Kyoto's Kitchen" day-trip from Osaka
-
-**WEATHER (April/May ideal)**
-Temperatures: 15–22 °C in Tokyo, 17–24 °C in Osaka
-Expect cherry blossoms in early April. Pack light layers and a compact umbrella.
-
-**LANGUAGE & CULTURAL TIPS**
-• Bow slightly when greeting – depth reflects formality
-• Remove shoes before entering traditional spaces (look for the step/mat)
-• No tipping – it can be considered rude
-• Speak quietly on public transport; phone calls are discouraged
-• Key phrases: Sumimasen (すみません) · Arigatou gozaimasu · Eigo ga hanasemasu ka?
-• IC card (Suica/ICOCA) covers trains, buses, and convenience store payments
-
-**PRACTICAL NOTES**
-• JR Pass (14-day) covers bullet-train travel between cities
-• Pocket Wi-Fi or eSIM essential for navigation
-• Most major attractions accept cards; carry cash for smaller shrines & markets""",
-         {}),
-    ]
-
-    for event, agent, message, data in mock_steps:
-        yield sse(event, agent, message, data)
-        await asyncio.sleep(0.7)
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
