@@ -1,43 +1,47 @@
 # Travel Planner — Multi-Agent Full-Stack App
 
+An AI-powered travel planning application that utilizes specialized expert agents (Destination, Weather, Language, and Coordinator) to synthesize real-time travel recommendations.
+
 ## Architecture
 
-```
-frontend/  (React + Vite)
-  src/App.jsx        ← main UI component
+All files are currently located in the root directory:
 
-backend/
-  main.py            ← FastAPI server (wraps t12.py agents)
-  requirements.txt
+```
+App.jsx            ← React frontend main UI component
+main.py            ← FastAPI backend server running BeeAI agents
+requirements.txt   ← Python dependencies
 ```
 
 ## Backend Setup
 
+Install the required Python dependencies and start the FastAPI server:
+
 ```bash
-cd backend
+# Install dependencies
 pip install -r requirements.txt
 
 # Start the server
 uvicorn main:app --reload --port 8000
 ```
 
-### Connecting BeeAI agents
-In `main.py`, find `build_agents()` and replace the stub with the agent
-construction from your original `t12.py`. The SSE stream in
-`run_agent_pipeline()` should forward real trajectory events from
-`GlobalTrajectoryMiddleware` — replace the mock steps list with actual
-`await coordinator.run(query)` calls and yield SSE events from the middleware.
+The backend is configured to use the `beeai_framework` and stream Server-Sent Events (SSE) detailing the trajectory of the agents' thought processes.
 
 ## Frontend Setup
 
+Since `App.jsx` is a single React component, you will need to scaffold a React environment if you haven't already:
+
 ```bash
+# Create a new Vite project (if needed)
+npm create vite@latest frontend -- --template react
 cd frontend
-npm create vite@latest . -- --template react   # first time only
 npm install
+
+# Move the App.jsx into the source folder
+mv ../App.jsx src/App.jsx
+
+# Start the development server
 npm run dev   # → http://localhost:5173
 ```
-
-Replace `src/App.jsx` with the provided file (or copy it in).
 
 ## API Endpoints
 
