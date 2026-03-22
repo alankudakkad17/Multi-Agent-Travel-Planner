@@ -1,5 +1,14 @@
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 import asyncio
 import logging
+import json
+import time
+from typing import AsyncGenerator
+
+
 from beeai_framework.agents.experimental import RequirementAgent
 from beeai_framework.agents.experimental.requirements.conditional import ConditionalRequirement
 from beeai_framework.agents.experimental.requirements.ask_permission import AskPermissionRequirement
@@ -12,7 +21,41 @@ from beeai_framework.tools.handoff import HandoffTool
 from beeai_framework.middleware.trajectory import GlobalTrajectoryMiddleware
 from beeai_framework.tools import Tool
 
-async def multi_agent_travel_planner_with_language():
+
+app = FastAPI(
+    title="Travel Planner Multi-Agent API",
+    description="AI-powered travel planning with specialized expert agents",
+    version="1.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+
+class TravelQuery(BaseModel):
+    query: str
+    destinations: list[str] = []
+    duration_days: int = 7
+    traveler_type: str = "first-time"
+
+
+class AgentEvent(BaseModel):
+    event: str          # "agent_start" | "agent_thinking" | "tool_call" | "agent_done" | "final_result" | "error"
+    agent: str
+    message: str
+    data: dict = {}
+    timestamp: float = 0.0
+
+
+# ── Agent pipeline ─────────────────────────────────────────────────────────────
+
+def build_agents():
     """
     Advanced Multi-Agent Travel Planning System with Language Expert
     
@@ -175,19 +218,72 @@ async def multi_agent_travel_planner_with_language():
             AskPermissionRequirement(["DestinationResearch", "WeatherPlanning", "LanguageCulturalGuidance"])
         ]
     )
-    
 
-    query = """I'm planning a 2-week cultural immersion trip to Japan (Tokyo and Osaka) as a first-time visitor. 
-    I want to experience traditional culture, visit historical sites, and interact with locals. 
-    I speak only English and want to be respectful of Japanese customs. 
-    What should I know about the destination, weather expectations, and language/cultural tips?"""
-    
-    result = await travel_coordinator.run(query)
-    print(f"\n📋 Comprehensive Travel Plan:\n{result.answer.text}")
 
-async def main() -> None:
-    logging.getLogger('asyncio').setLevel(logging.CRITICAL)
-    await multi_agent_travel_planner_with_language()
+async def run_agent_pipeline(query: str) -> AsyncGenerator[str, None]:
+    def sse(event: str, agent: str, message: str, data: dict = {}) -> str:
+        payload = {
+            "event": event,
+            "agent": agent,
+            "message": message,
+            "data": data,
+            "timestamp": time.time(),
+        }
+        return f"data: {json.dumps(payload)}\n\n"
 
-if __name__ == "__main__":
-    asyncio.run(main())
+    # ── Attempt real pipeline ──────────────────────────────────────────────────
+    try:
+        coordinator = build_agents()
+        result = await coordinator.run(query)
+        yield sse("final_result", "Travel Coordinator", result.answer.text)
+        return
+    except NotImplementedError:
+        pass  
+    except Exception as exc:
+        yield sse("error", "System", str(exc))
+        return
+
+
+# ── Routes ─────────────────────────────────────────────────────────────────────
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "travel-planner-api"}
+
+
+@app.post("/plan/stream")
+async def plan_stream(body: TravelQuery):
+    """Stream agent events as Server-Sent Events."""
+    full_query = body.query
+    if body.destinations:
+        full_query += f" Destinations: {', '.join(body.destinations)}."
+    if body.duration_days:
+        full_query += f" Duration: {body.duration_days} days."
+    if body.traveler_type:
+        full_query += f" Traveler type: {body.traveler_type}."
+
+    return StreamingResponse(
+        run_agent_pipeline(full_query),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.post("/plan")
+async def plan_sync(body: TravelQuery):
+    """Non-streaming endpoint – collects all events and returns the final result."""
+    full_query = body.query
+    events = []
+    final_text = ""
+
+    async for raw in run_agent_pipeline(full_query):
+        if raw.startswith("data: "):
+            payload = json.loads(raw[6:])
+            events.append(payload)
+            if payload["event"] == "final_result":
+                final_text = payload["message"]
+
+    return {"result": final_text, "events": events}
