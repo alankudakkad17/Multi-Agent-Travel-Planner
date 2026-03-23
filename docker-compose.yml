@@ -1,0 +1,19 @@
+services:
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - WATSONX_API_KEY=${WATSONX_API_KEY}
+      - WATSONX_PROJECT_ID=${WATSONX_PROJECT_ID}
+      - WATSONX_URL=${WATSONX_URL:-https://us-south.ml.cloud.ibm.com}
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
