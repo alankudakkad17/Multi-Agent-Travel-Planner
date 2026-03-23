@@ -1,7 +1,9 @@
 services:
-
+ 
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
     ports:
       - "8000:8000"
     environment:
@@ -9,11 +11,14 @@ services:
       - WATSONX_PROJECT_ID=${WATSONX_PROJECT_ID}
       - WATSONX_URL=${WATSONX_URL:-https://us-south.ml.cloud.ibm.com}
     restart: unless-stopped
-
+ 
   frontend:
-    build: ./frontend
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
     ports:
       - "3000:80"
     depends_on:
       - backend
     restart: unless-stopped
+ 
