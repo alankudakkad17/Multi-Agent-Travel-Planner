@@ -1,24 +1,30 @@
 services:
- 
+
   backend:
     build:
-      context: .
-      dockerfile: Dockerfile.backend
+      context: ./backend
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    environment:
-      - WATSONX_API_KEY=${WATSONX_API_KEY}
-      - WATSONX_PROJECT_ID=${WATSONX_PROJECT_ID}
-      - WATSONX_URL=${WATSONX_URL:-https://us-south.ml.cloud.ibm.com}
+    env_file:
+      - .env
     restart: unless-stopped
- 
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
   frontend:
     build:
-      context: .
-      dockerfile: Dockerfile.frontend
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:8000}
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
- 

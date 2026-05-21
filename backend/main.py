@@ -1,13 +1,12 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-import asyncio
+from pydantic import BaseModel, Field
 import logging
 import json
+import os
 import time
 from typing import AsyncGenerator
-
 
 from beeai_framework.agents.experimental import RequirementAgent
 from beeai_framework.agents.experimental.requirements.conditional import ConditionalRequirement
@@ -21,59 +20,55 @@ from beeai_framework.tools.handoff import HandoffTool
 from beeai_framework.middleware.trajectory import GlobalTrajectoryMiddleware
 from beeai_framework.tools import Tool
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+_cors_origins = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:3000,http://localhost:5173",
+).split(",")
 
 app = FastAPI(
     title="Travel Planner Multi-Agent API",
     description="AI-powered travel planning with specialized expert agents",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-
 class TravelQuery(BaseModel):
-    query: str
+    query: str = Field(..., min_length=10, max_length=1000)
     destinations: list[str] = []
-    duration_days: int = 7
-    traveler_type: str = "first-time"
+    duration_days: int = Field(default=7, ge=1, le=90)
+    traveler_type: str = Field(default="first-time", max_length=50)
 
 
 class AgentEvent(BaseModel):
-    event: str          # "agent_start" | "agent_thinking" | "tool_call" | "agent_done" | "final_result" | "error"
+    event: str
     agent: str
     message: str
     data: dict = {}
     timestamp: float = 0.0
 
 
-# ── Agent pipeline ─────────────────────────────────────────────────────────────
+# ── Agent pipeline ──────────────────────────────────────────────────────────────
 
-def build_agents():
-    """
-    Advanced Multi-Agent Travel Planning System with Language Expert
-    
-    This system demonstrates:
-    1. Specialized agent roles and coordination
-    2. Tool-based inter-agent communication
-    3. Requirements-based execution control
-    4. Language and cultural expertise integration
-    5. Comprehensive travel planning workflow
-    """
-    
-    # Initialize the language model
+def build_agents() -> RequirementAgent:
     llm = ChatModel.from_name(
-        "watsonx:meta-llama/llama-4-maverick-17b-128e-instruct-fp8", 
-        ChatModelParameters(temperature=0)
+        "watsonx:meta-llama/llama-4-maverick-17b-128e-instruct-fp8",
+        ChatModelParameters(temperature=0),
     )
-    
-    # === AGENT 1: DESTINATION RESEARCH EXPERT ===
+
     destination_expert = RequirementAgent(
         llm=llm,
         tools=[WikipediaTool(), ThinkTool()],
@@ -94,19 +89,18 @@ def build_agents():
                 force_at_step=1,
                 min_invocations=1,
                 max_invocations=5,
-                consecutive_allowed=False
+                consecutive_allowed=False,
             ),
             ConditionalRequirement(
                 WikipediaTool,
                 only_after=[ThinkTool],
                 min_invocations=1,
                 max_invocations=4,
-                consecutive_allowed=False
+                consecutive_allowed=False,
             ),
-        ]
+        ],
     )
-    
-    # === AGENT 2: TRAVEL METEOROLOGIST ===
+
     travel_meteorologist = RequirementAgent(
         llm=llm,
         tools=[OpenMeteoTool(), ThinkTool()],
@@ -128,18 +122,17 @@ def build_agents():
                 ThinkTool,
                 force_at_step=1,
                 min_invocations=1,
-                max_invocations=2
+                max_invocations=2,
             ),
             ConditionalRequirement(
                 OpenMeteoTool,
                 only_after=[ThinkTool],
                 min_invocations=1,
-                max_invocations=1
-            )
-        ]
+                max_invocations=1,
+            ),
+        ],
     )
-    
-    # === AGENT 3: LANGUAGE & CULTURAL EXPERT ===
+
     language_and_culture_expert = RequirementAgent(
         llm=llm,
         tools=[WikipediaTool(), ThinkTool()],
@@ -163,28 +156,27 @@ def build_agents():
                 force_at_step=1,
                 min_invocations=1,
                 max_invocations=3,
-                consecutive_allowed=False
+                consecutive_allowed=False,
             ),
-        ]
+        ],
     )
-    
-    # === AGENT 4: TRAVEL COORDINATOR (MAIN INTERFACE) ===
+
     handoff_to_destination = HandoffTool(
         destination_expert,
         name="DestinationResearch",
-        description="Consult our Destination Research Expert for comprehensive information about travel destinations, attractions, and practical travel guidance."
+        description="Consult our Destination Research Expert for comprehensive information about travel destinations, attractions, and practical travel guidance.",
     )
     handoff_to_weather = HandoffTool(
         travel_meteorologist,
-        name="WeatherPlanning", 
-        description="Consult our Travel Meteorologist for weather forecasts, climate analysis, and weather-appropriate travel recommendations."
+        name="WeatherPlanning",
+        description="Consult our Travel Meteorologist for weather forecasts, climate analysis, and weather-appropriate travel recommendations.",
     )
     handoff_to_language = HandoffTool(
         language_and_culture_expert,
         name="LanguageCulturalGuidance",
-        description="Consult our Language & Cultural Expert for essential phrases, cultural etiquette, and communication guidance for respectful travel."
+        description="Consult our Language & Cultural Expert for essential phrases, cultural etiquette, and communication guidance for respectful travel.",
     )
-    
+
     travel_coordinator = RequirementAgent(
         llm=llm,
         tools=[handoff_to_destination, handoff_to_weather, handoff_to_language, ThinkTool()],
@@ -200,7 +192,7 @@ def build_agents():
 
         Available Expert Agents:
         - Destination Expert: Practical destination information
-        - Travel Meteorologist: Weather analysis and climate recommendations  
+        - Travel Meteorologist: Weather analysis and climate recommendations
         - Language Expert: Language tips, cultural etiquette, and communication guidance
 
         Coordination Process:
@@ -214,9 +206,11 @@ def build_agents():
         middlewares=[GlobalTrajectoryMiddleware(included=[Tool])],
         requirements=[
             ConditionalRequirement(ThinkTool, consecutive_allowed=False),
-            AskPermissionRequirement(["DestinationResearch", "WeatherPlanning", "LanguageCulturalGuidance"])
-        ]
+            AskPermissionRequirement(["DestinationResearch", "WeatherPlanning", "LanguageCulturalGuidance"]),
+        ],
     )
+
+    return travel_coordinator
 
 
 async def run_agent_pipeline(query: str) -> AsyncGenerator[str, None]:
@@ -229,20 +223,17 @@ async def run_agent_pipeline(query: str) -> AsyncGenerator[str, None]:
             "timestamp": time.time(),
         }
         return f"data: {json.dumps(payload)}\n\n"
-        
+
     try:
         coordinator = build_agents()
         result = await coordinator.run(query)
         yield sse("final_result", "Travel Coordinator", result.answer.text)
-        return
-    except NotImplementedError:
-        pass  
     except Exception as exc:
+        logger.exception("Agent pipeline failed: %s", exc)
         yield sse("error", "System", str(exc))
-        return
 
 
-# ── Routes ─────────────────────────────────────────────────────────────────────
+# ── Routes ──────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 async def health():

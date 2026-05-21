@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
 const AGENTS = {
   "Travel Coordinator":   { icon: "✦", color: "#e8c87a" },
@@ -41,7 +41,6 @@ function EventRow({ ev, idx }) {
       background: isResult ? "rgba(232,200,122,0.06)" : isError ? "rgba(255,80,80,0.06)" : "transparent",
       animation: `fadeSlide 0.35s ease ${idx * 0.04}s both`,
     }}>
-      {/* Timeline dot */}
       <div style={{ paddingTop: 3, flexShrink: 0 }}>
         <div style={{ width: 8, height: 8, borderRadius: "50%", background: cfg.color, boxShadow: `0 0 8px ${cfg.color}88` }} />
       </div>
@@ -228,7 +227,6 @@ export default function TravelPlannerApp() {
         ::-webkit-scrollbar { width: 4px } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius:2px }
       `}</style>
 
-      {/* Header */}
       <header style={{
         padding: "28px 40px 0",
         borderBottom: "1px solid rgba(255,255,255,0.06)",
@@ -249,7 +247,6 @@ export default function TravelPlannerApp() {
 
       <main style={{ maxWidth: 900, margin: "0 auto", padding: "32px 40px" }}>
 
-        {/* Query Form */}
         <div style={{
           background: "rgba(255,255,255,0.03)",
           border: "1px solid rgba(255,255,255,0.08)",
@@ -366,10 +363,8 @@ export default function TravelPlannerApp() {
           </div>
         )}
 
-        {/* Agent Status */}
         {events.length > 0 && <AgentStatusBar events={events} />}
 
-        {/* Event Log */}
         {events.length > 0 && (
           <div style={{
             border: "1px solid rgba(255,255,255,0.07)",
@@ -401,7 +396,6 @@ export default function TravelPlannerApp() {
           </div>
         )}
 
-        {/* Empty state */}
         {events.length === 0 && !loading && (
           <div style={{ textAlign: "center", padding: "60px 20px", color: "rgba(255,255,255,0.15)" }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>✦</div>
