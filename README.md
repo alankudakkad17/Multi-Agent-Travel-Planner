@@ -1,57 +1,100 @@
 # Travel Planner — Multi-Agent Full-Stack App
 
-An AI-powered travel planning application that utilizes specialized expert agents (Destination, Weather, Language, and Coordinator) to synthesize real-time travel recommendations.
+An AI-powered travel planning application that uses 4 specialized expert agents (Destination, Weather, Language, and Coordinator) to synthesize real-time travel recommendations via Server-Sent Events.
 
-## Architecture
-
-All files are currently located in the root directory:
+## Project Structure
 
 ```
-App.jsx            ← React frontend main UI component
-main.py            ← FastAPI backend server running BeeAI agents
-requirements.txt   ← Python dependencies
+├── backend/
+│   ├── main.py            ← FastAPI server + BeeAI agent pipeline
+│   ├── requirements.txt   ← Python dependencies
+│   └── Dockerfile
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx        ← Main React UI component
+│   │   └── main.jsx       ← React entry point
+│   ├── index.html
+│   ├── vite.config.js
+│   ├── package.json
+│   ├── nginx.conf         ← Production nginx config
+│   ├── .env.example       ← Frontend env template
+│   └── Dockerfile
+├── .env.example           ← Root env template (WatsonX credentials)
+├── .gitignore
+└── docker-compose.yml
 ```
 
-## Backend Setup
-
-Install the required Python dependencies and start the FastAPI server:
+## Quick Start (Docker)
 
 ```bash
-# Install dependencies
+# 1. Copy the env template and fill in your WatsonX credentials
+cp .env.example .env
+
+# 2. Build and start both services
+docker compose up --build
+
+# Frontend → http://localhost:3000
+# Backend  → http://localhost:8000
+```
+
+## Local Development
+
+### Backend
+
+```bash
+cd backend
 pip install -r requirements.txt
 
-# Start the server
+# Set environment variables
+export WATSONX_API_KEY=your_key
+export WATSONX_PROJECT_ID=your_project_id
+export WATSONX_URL=https://us-south.ml.cloud.ibm.com
+
 uvicorn main:app --reload --port 8000
 ```
 
-The backend is configured to use the `beeai_framework` and stream Server-Sent Events (SSE) detailing the trajectory of the agents' thought processes.
-
-## Frontend Setup
-
-Since `App.jsx` is a single React component, you will need to scaffold a React environment if you haven't already:
+### Frontend
 
 ```bash
-# Create a new Vite project (if needed)
-npm create vite@latest frontend -- --template react
 cd frontend
 npm install
 
-# Move the App.jsx into the source folder
-mv ../App.jsx src/App.jsx
+# Copy and configure env
+cp .env.example .env
 
-# Start the development server
 npm run dev   # → http://localhost:5173
 ```
 
+> The Vite dev server proxies `/plan` and `/health` to `http://localhost:8000` automatically — no CORS issues during development.
+
+## Environment Variables
+
+### Root `.env` (backend + Docker)
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `WATSONX_API_KEY` | Yes | — | IBM WatsonX API key |
+| `WATSONX_PROJECT_ID` | Yes | — | IBM WatsonX project ID |
+| `WATSONX_URL` | No | `https://us-south.ml.cloud.ibm.com` | WatsonX regional endpoint |
+| `CORS_ORIGINS` | No | `http://localhost:3000,http://localhost:5173` | Comma-separated allowed origins |
+| `VITE_API_BASE` | No | `http://localhost:8000` | API URL baked into Docker frontend build |
+
+### `frontend/.env`
+
+| Variable | Default | Description |
+|---|---|---|
+| `VITE_API_BASE` | `http://localhost:8000` | Backend URL used by the browser |
+
 ## API Endpoints
 
-| Method | Path           | Description                              |
-|--------|----------------|------------------------------------------|
-| GET    | /health        | Health check                             |
-| POST   | /plan/stream   | **SSE stream** of agent events           |
-| POST   | /plan          | Sync endpoint, returns full JSON result  |
+| Method | Path | Description |
+|---|---|---|
+| GET | `/health` | Health check |
+| POST | `/plan/stream` | SSE stream of agent events |
+| POST | `/plan` | Sync endpoint, returns full JSON result |
 
-### Request body (`/plan/stream` and `/plan`)
+### Request body
+
 ```json
 {
   "query": "I want to visit Japan for 2 weeks...",
@@ -62,6 +105,7 @@ npm run dev   # → http://localhost:5173
 ```
 
 ### SSE event shape
+
 ```json
 {
   "event": "agent_start | agent_thinking | tool_call | agent_done | final_result | error",
@@ -70,4 +114,13 @@ npm run dev   # → http://localhost:5173
   "data": {},
   "timestamp": 1712345678.123
 }
+```
+
+## Agent Architecture
+
+```
+Travel Coordinator (orchestrator)
+├── DestinationResearch  →  Destination Expert   (WikipediaTool, ThinkTool)
+├── WeatherPlanning      →  Travel Meteorologist  (OpenMeteoTool, ThinkTool)
+└── LanguageCulturalGuidance → Language Expert   (WikipediaTool, ThinkTool)
 ```
